@@ -6,22 +6,29 @@ export class MathEngine {
     parseInput(expression) {
         // Remove spaces
         expression = expression.trim().replace(/\s+/g, '');
-        // Match "Number+Number"
-        // Supports alphanumeric for bases > 10 if needed, technically.
-        const match = expression.match(/^([0-9A-Za-z]+)\+([0-9A-Za-z]+)$/);
+        // Match "Number operator Number"
+        const match = expression.match(/^([0-9A-Za-z]+)([\+\-])([0-9A-Za-z]+)$/);
         if (!match) {
-            throw new Error("Invalid format. Expected 'Num + Num'");
+            throw new Error("Invalid format. Expected 'Num + Num' or 'Num - Num'");
         }
         return {
             op1: match[1],
-            op2: match[2],
-            operator: '+'
+            operator: match[2],
+            op2: match[3]
         };
     }
 
     generateSteps(expression, base = 10) {
-        const { op1, op2 } = this.parseInput(expression);
+        const { op1, operator, op2 } = this.parseInput(expression);
 
+        if (operator === '+') {
+            return this.generateAdditionSteps(op1, op2, base);
+        } else {
+            return this.generateSubtractionSteps(op1, op2, base);
+        }
+    }
+
+    generateAdditionSteps(op1, op2, base) {
         // Parse numbers based on base
         const val1 = parseInt(op1, base);
         const val2 = parseInt(op2, base);
@@ -125,6 +132,126 @@ export class MathEngine {
             result: resultDigits.join('')
         });
 
+        return steps;
+    }
+
+    generateSubtractionSteps(op1, op2, base) {
+        const val1 = parseInt(op1, base);
+        const val2 = parseInt(op2, base);
+        if (val1 < val2) throw new Error("Negative results not supported visually yet.");
+
+        const len = Math.max(op1.length, op2.length);
+        // Pad operands.
+        let str1 = op1.padStart(len, '0'); // Pad with 0s for easier logic? Or spaces? 
+        // Logic is easier with numbers array.
+        let digits1 = str1.split('').map(d => parseInt(d, base));
+        const str2 = op2.padStart(len, '0'); // Subtrahend
+        const digits2 = str2.split('').map(d => parseInt(d, base));
+
+        const steps = [];
+        const resultDigits = [];
+
+        // Track "current" value of digits1 as we borrow visually
+        // Detailed Visual State
+        let visualDigitsTop = [...digits1];
+
+        steps.push({
+            type: 'setup',
+            operands: {
+                top: op1.padStart(len, ' '),
+                bottom: op2.padStart(len, ' '),
+            },
+            base: base,
+            maxLength: len,
+            operator: '-'
+        });
+
+        for (let i = len - 1; i >= 0; i--) {
+            // Need to borrow?
+            let d1 = visualDigitsTop[i]; // Current value (might have been borrowed from)
+            const d2 = digits2[i];
+
+            steps.push({ type: 'highlight', columnIndex: i });
+
+            if (d1 < d2) {
+                // BORROW SEQUENCE
+                // Find lender
+                let k = i - 1;
+                while (k >= 0 && visualDigitsTop[k] === 0) {
+                    k--;
+                }
+                if (k < 0) throw new Error("Should not happen if val1 >= val2");
+
+                // Borrow from k
+                // Visualize: Cross out k, write new val
+                const oldValK = visualDigitsTop[k];
+                visualDigitsTop[k] -= 1;
+                const newValK = visualDigitsTop[k];
+
+                steps.push({
+                    type: 'borrow_action',
+                    columnIndex: k,
+                    oldValue: oldValK.toString(base).toUpperCase(),
+                    newValue: newValK.toString(base).toUpperCase(),
+                    isSource: true
+                });
+
+                // Ripple zeros
+                for (let j = k + 1; j < i; j++) {
+                    // 0 becomes base-1
+                    const oldValJ = visualDigitsTop[j]; // 0
+                    visualDigitsTop[j] = base - 1;
+                    const newValJ = visualDigitsTop[j];
+
+                    steps.push({
+                        type: 'borrow_action',
+                        columnIndex: j,
+                        oldValue: oldValJ.toString(base).toUpperCase(),
+                        // In visual, if it was already modified, we cross out the modified?
+                        // Assuming standard ripple on 0s
+                        newValue: newValJ.toString(base).toUpperCase(),
+                        isRipple: true
+                    });
+                }
+
+                // Add base to current col
+                const oldValI = visualDigitsTop[i];
+                visualDigitsTop[i] += base;
+                const newValI = visualDigitsTop[i]; // This might be "10" or "11" etc.
+                // We typically show the "1" superscript or the full value?
+                // LaTeX shows "10" for binary 2. 
+
+                steps.push({
+                    type: 'borrow_receive',
+                    columnIndex: i,
+                    oldValue: oldValI.toString(base).toUpperCase(),
+                    newValue: base === 2 && newValI === 2 ? "10" : newValI.toString(base).toUpperCase(), // Special case for binary 10
+                    addedValue: base
+                });
+
+                // Update d1 for calculation
+                d1 = visualDigitsTop[i];
+            }
+
+            // Calculate Difference
+            const diff = d1 - d2;
+            resultDigits.unshift(diff.toString(base).toUpperCase());
+
+            steps.push({
+                type: 'calculate_diff',
+                columnIndex: i,
+                values: { dTop: d1, dBottom: d2 },
+                diff: diff.toString(base).toUpperCase()
+            });
+
+            steps.push({
+                type: 'write_result',
+                columnIndex: i,
+                value: diff.toString(base).toUpperCase()
+            });
+        }
+
+        steps.push({ type: 'finish', result: resultDigits.join('') });
         return steps;
     }
 }

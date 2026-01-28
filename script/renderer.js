@@ -18,7 +18,7 @@ export class Renderer {
         this.config = {
             fontSize: 120,
             fontFamily: "Courier New, monospace", // Monospace helps alignment
-            colorNormal: "#000000",
+            colorNormal: "#ffffffff",
             colorHighlight: "#ff3b30", // Red for active
             colorSecondary: "#777777ff", // Grey for inactive carries
             digitSpacing: 100,
@@ -139,14 +139,94 @@ export class Renderer {
             ctx.fillText(val, getX(parseInt(colIdx)), config.startY + (config.lineHeight * 2));
         });
 
-        if (this.persistentState.finalCarry) {
-            ctx.fillStyle = config.colorHighlight;
-            ctx.fillText(this.persistentState.finalCarry, getX(-1), config.startY + (config.lineHeight * 2));
+        // Initialize optional borrowMap if generic
+        if (!this.persistentState.borrows) this.persistentState.borrows = {}; // Map col -> { crossed: bool, newVal: str }
+
+        // Layout adjustments for subtraction
+        // If we have borrows, we might want to push things down, or draw small numbers above.
+        // User styled LaTeX shows "Borrow" row at top.
+        const borrowRowY = config.startY - 50;
+
+        // Draw Borrows (Persistent)
+        Object.entries(this.persistentState.borrows).forEach(([colIdx, data]) => {
+            const cIdx = parseInt(colIdx);
+            if (data.crossed) {
+                // Draw Cross
+                const x = getX(cIdx);
+                const y = config.startY;
+                ctx.strokeStyle = config.colorHighlight;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(x - 20, y - 20); // Slash
+                ctx.lineTo(x + 20, y - 50); // Up right? Strikethrough style /
+                ctx.stroke();
+            }
+            if (data.newVal) {
+                // Draw new val above
+                ctx.fillStyle = config.colorHighlight; // Red for borrow vals
+                ctx.font = `bold ${config.fontSize * 0.6}px ${config.fontFamily}`;
+                ctx.fillText(data.newVal, getX(cIdx), borrowRowY);
+            }
+        });
+
+        // Handle Borrow Animation (Action/Receive)
+        if (step.type === 'borrow_action' || step.type === 'borrow_receive') {
+            const colX = getX(step.columnIndex);
+
+            // Strikethrough animation?
+            if (step.type === 'borrow_action') {
+                // Draw strike
+                ctx.strokeStyle = config.colorHighlight;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                // Animating the slash?
+                ctx.moveTo(colX - 20, config.startY - 20);
+                const endX = colX + 20;
+                const endY = config.startY - 50;
+
+                // Lerp
+                const curX = (colX - 20) + ((endX - (colX - 20)) * progress);
+                const curY = (config.startY - 20) + ((endY - (config.startY - 20)) * progress);
+
+                ctx.lineTo(curX, curY);
+                ctx.stroke();
+
+                // Fade in new value above
+                if (progress > 0.5) {
+                    ctx.globalAlpha = (progress - 0.5) * 2;
+                    ctx.fillStyle = config.colorHighlight;
+                    ctx.font = `bold ${config.fontSize * 0.6}px ${config.fontFamily}`;
+                    ctx.fillText(step.newValue, colX, borrowRowY);
+                    ctx.globalAlpha = 1.0;
+                }
+
+                if (progress === 1) {
+                    this.persistentState.borrows[step.columnIndex] = { crossed: true, newVal: step.newValue };
+                }
+            }
+
+            if (step.type === 'borrow_receive') {
+                // Receiving a borrow, e.g. "0" becomes "10"
+                // Just show the new value above? Or strike the old? 
+                // LaTeX example shows "10" above the 0, but 0 is not crossed?
+                // Actually row 1 is "0 10 10". 
+                // We will overwrite effectively by drawing above.
+
+                ctx.globalAlpha = progress;
+                ctx.fillStyle = config.colorHighlight;
+                ctx.font = `bold ${config.fontSize * 0.6}px ${config.fontFamily}`;
+                ctx.fillText(step.newValue, colX, borrowRowY);
+                ctx.globalAlpha = 1.0;
+
+                if (progress === 1) {
+                    this.persistentState.borrows[step.columnIndex] = { crossed: false, newVal: step.newValue };
+                }
+            }
         }
 
         // Draw Intermediate Calculation (Side Style)
-        if (step.type === 'calculate' || (step.type === 'write_result' && progress < 1)) {
-            if (step.type === 'calculate') {
+        if (step.type === 'calculate' || step.type === 'calculate_diff' || (step.type === 'write_result' && progress < 1)) {
+            if (step.type.includes('calculate')) {
                 ctx.globalAlpha = Math.min(progress * 2, 1);
             } else {
                 ctx.globalAlpha = Math.max(0, 1 - progress);
@@ -156,30 +236,32 @@ export class Renderer {
                 const stepVal = step.values;
                 const colX = getX(step.columnIndex);
 
-                // Position: To the right of the active column.
-                // Move it closer if we aren't writing the full equation
                 const textX = colX + (config.digitSpacing * 1.8);
-                const textY = config.startY + (config.lineHeight * 1.0); // Align with bottom number/operator roughly
+                const textY = config.startY + (config.lineHeight * 1.0);
 
                 ctx.font = `bold 60px Arial`;
                 ctx.textAlign = "left";
 
-                // Draw just "= SUM"
-                // e.g. "= 8" or "= 18"
-                const text = `= ${step.sum}`;
-                ctx.fillStyle = config.colorHighlight; // RED
+                let text = "";
+                if (step.type === 'calculate_diff') {
+                    // Subtraction: "dTop - dBottom = Diff"
+                    // step.diff is the result
+                    text = `= ${step.diff}`;
+                } else {
+                    text = `= ${step.sum}`;
+                }
+
+                ctx.fillStyle = config.colorHighlight;
                 ctx.fillText(text, textX, textY);
 
-                // Draw Arrow from the result number to the answer slot
-                // Start: Bottom-Center of the RESULT number in the side text
+                // Draw Arrow
                 const textWidth = ctx.measureText(text).width;
-                const arrowStartX = textX + (textWidth * 0.7); // Roughly under the number part
+                const arrowStartX = textX + (textWidth * 0.7);
                 const arrowStartY = textY + 10;
 
                 const arrowEndX = colX;
-                const arrowEndY = config.startY + (config.lineHeight * 2) - 30; // Top of the answer digit position
+                const arrowEndY = config.startY + (config.lineHeight * 2) - 30;
 
-                // Curved Arrow
                 this.drawCurvedArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY);
             }
 

@@ -83,11 +83,20 @@ export class Renderer {
     }
 
     drawStep(step, progress = 1) {
-        this.clear();
+        this.ctx.clearRect(0, 0, this.width, this.height);
+
+        // 1. Background Flash Logic
+        if (step.type === 'borrow_action') {
+            // Flash white based on progress or just solid white?
+            // "change the background coluor to white if the number was crossed out"
+            // Let's fade it in/out or keep it white during the action
+            this.ctx.fillStyle = "white";
+            this.ctx.fillRect(0, 0, this.width, this.height);
+        }
+
         const { ctx, config } = this;
 
         // We always draw the static operands
-        // Find the 'setup' step or use stored operands from the first step in list
         const setupStep = this.steps[0];
         if (!setupStep) return;
 
@@ -98,30 +107,45 @@ export class Renderer {
         ctx.font = `bold ${config.fontSize}px ${config.fontFamily}`;
         ctx.textAlign = "center";
 
-        // Helper to get X position for a column index
         const getX = (i) => startX + (i * config.digitSpacing) + (config.digitSpacing / 2);
+
+        // Determine text color based on background
+        // If background is white (borrow_action), text should be black
+        const isWhiteBg = step.type === 'borrow_action';
+        const textColor = isWhiteBg ? "black" : config.colorNormal;
+        const highlightColor = config.colorHighlight; // Keep red
 
         // Draw Top Number
         for (let i = 0; i < operands.top.length; i++) {
             const char = operands.top[i];
-            // Highlight logic
             const isHighlight = (step.type === 'highlight' || step.type === 'calculate') && step.columnIndex === i;
-            ctx.fillStyle = isHighlight ? config.colorHighlight : config.colorNormal;
-            ctx.fillText(char, getX(i), config.startY);
+
+            ctx.fillStyle = isHighlight ? highlightColor : textColor;
+
+            // Pop-up effect for active top digit
+            if (isHighlight) {
+                this.drawPoppedText(char, getX(i), config.startY, progress);
+            } else {
+                ctx.fillText(char, getX(i), config.startY);
+            }
         }
 
         // Draw Operator
-        // Highlight operator if any calculation is happening
         const isOperatorHighlight = (step.type === 'highlight' || step.type === 'calculate' || step.type === 'write_result');
-        ctx.fillStyle = isOperatorHighlight ? config.colorHighlight : config.colorNormal;
+        ctx.fillStyle = isOperatorHighlight ? highlightColor : textColor;
         ctx.fillText(setupStep.operator, startX - config.digitSpacing, config.startY + config.lineHeight);
 
         // Draw Bottom Number
         for (let i = 0; i < operands.bottom.length; i++) {
             const char = operands.bottom[i];
             const isHighlight = (step.type === 'highlight' || step.type === 'calculate') && step.columnIndex === i;
-            ctx.fillStyle = isHighlight ? config.colorHighlight : config.colorNormal;
-            ctx.fillText(char, getX(i), config.startY + config.lineHeight);
+
+            ctx.fillStyle = isHighlight ? highlightColor : textColor;
+            if (isHighlight) {
+                this.drawPoppedText(char, getX(i), config.startY + config.lineHeight, progress);
+            } else {
+                ctx.fillText(char, getX(i), config.startY + config.lineHeight);
+            }
         }
 
         // Draw Line
@@ -129,43 +153,37 @@ export class Renderer {
         ctx.moveTo(startX - config.digitSpacing, config.startY + config.lineHeight + 40);
         ctx.lineTo(startX + totalWidth + 20, config.startY + config.lineHeight + 40);
         ctx.lineWidth = 5;
-        ctx.strokeStyle = config.colorNormal;
+        ctx.strokeStyle = textColor;
         ctx.stroke();
 
         // Draw Results (Persistent)
         Object.entries(this.persistentState.resultDigits).forEach(([colIdx, val]) => {
-            ctx.fillStyle = config.colorHighlight; // Results are always red/highlighted in the example? Or black once done? Image shows red result 8. 
-            // Let's keep them highlighted as they are "new"
-            ctx.fillText(val, getX(parseInt(colIdx)), config.startY + (config.lineHeight * 2));
+            ctx.fillStyle = highlightColor;
+            ctx.fillText(val || "?", getX(parseInt(colIdx)), config.startY + (config.lineHeight * 2));
         });
 
-        // Initialize optional borrowMap if generic
-        if (!this.persistentState.borrows) this.persistentState.borrows = {}; // Map col -> { crossed: bool, newVal: str }
-
-        // Layout adjustments for subtraction
-        // If we have borrows, we might want to push things down, or draw small numbers above.
-        // User styled LaTeX shows "Borrow" row at top.
+        if (!this.persistentState.borrows) this.persistentState.borrows = {};
         const borrowRowY = config.startY - 50;
 
         // Draw Borrows (Persistent)
         Object.entries(this.persistentState.borrows).forEach(([colIdx, data]) => {
             const cIdx = parseInt(colIdx);
             if (data.crossed) {
-                // Draw Cross
                 const x = getX(cIdx);
                 const y = config.startY;
-                ctx.strokeStyle = config.colorHighlight;
+                ctx.strokeStyle = highlightColor;
                 ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.moveTo(x - 20, y - 20); // Slash
-                ctx.lineTo(x + 20, y - 50); // Up right? Strikethrough style /
+                ctx.moveTo(x - 20, y - 20);
+                ctx.lineTo(x + 20, y - 50);
                 ctx.stroke();
             }
             if (data.newVal) {
-                // Draw new val above
-                ctx.fillStyle = config.colorHighlight; // Red for borrow vals
+                ctx.fillStyle = highlightColor;
                 ctx.font = `bold ${config.fontSize * 0.6}px ${config.fontFamily}`;
                 ctx.fillText(data.newVal, getX(cIdx), borrowRowY);
+                // Reset font
+                ctx.font = `bold ${config.fontSize}px ${config.fontFamily}`;
             }
         });
 
@@ -173,30 +191,24 @@ export class Renderer {
         if (step.type === 'borrow_action' || step.type === 'borrow_receive') {
             const colX = getX(step.columnIndex);
 
-            // Strikethrough animation?
             if (step.type === 'borrow_action') {
-                // Draw strike
-                ctx.strokeStyle = config.colorHighlight;
+                ctx.strokeStyle = highlightColor;
                 ctx.lineWidth = 3;
                 ctx.beginPath();
-                // Animating the slash?
                 ctx.moveTo(colX - 20, config.startY - 20);
                 const endX = colX + 20;
                 const endY = config.startY - 50;
 
-                // Lerp
                 const curX = (colX - 20) + ((endX - (colX - 20)) * progress);
                 const curY = (config.startY - 20) + ((endY - (config.startY - 20)) * progress);
 
                 ctx.lineTo(curX, curY);
                 ctx.stroke();
 
-                // Fade in new value above
                 if (progress > 0.5) {
                     ctx.globalAlpha = (progress - 0.5) * 2;
-                    ctx.fillStyle = config.colorHighlight;
-                    ctx.font = `bold ${config.fontSize * 0.6}px ${config.fontFamily}`;
-                    ctx.fillText(step.newValue, colX, borrowRowY);
+                    ctx.fillStyle = highlightColor;
+                    this.drawPoppedText(step.newValue, colX, borrowRowY, progress, 0.6);
                     ctx.globalAlpha = 1.0;
                 }
 
@@ -206,16 +218,9 @@ export class Renderer {
             }
 
             if (step.type === 'borrow_receive') {
-                // Receiving a borrow, e.g. "0" becomes "10"
-                // Just show the new value above? Or strike the old? 
-                // LaTeX example shows "10" above the 0, but 0 is not crossed?
-                // Actually row 1 is "0 10 10". 
-                // We will overwrite effectively by drawing above.
-
                 ctx.globalAlpha = progress;
-                ctx.fillStyle = config.colorHighlight;
-                ctx.font = `bold ${config.fontSize * 0.6}px ${config.fontFamily}`;
-                ctx.fillText(step.newValue, colX, borrowRowY);
+                ctx.fillStyle = highlightColor;
+                this.drawPoppedText(step.newValue, colX, borrowRowY, progress, 0.6);
                 ctx.globalAlpha = 1.0;
 
                 if (progress === 1) {
@@ -224,7 +229,7 @@ export class Renderer {
             }
         }
 
-        // Draw Intermediate Calculation (Side Style)
+        // Draw Intermediate Calculation
         if (step.type === 'calculate' || step.type === 'calculate_diff' || (step.type === 'write_result' && progress < 1)) {
             if (step.type.includes('calculate')) {
                 ctx.globalAlpha = Math.min(progress * 2, 1);
@@ -233,9 +238,7 @@ export class Renderer {
             }
 
             if (ctx.globalAlpha > 0.01) {
-                const stepVal = step.values;
                 const colX = getX(step.columnIndex);
-
                 const textX = colX + (config.digitSpacing * 1.8);
                 const textY = config.startY + (config.lineHeight * 1.0);
 
@@ -243,24 +246,26 @@ export class Renderer {
                 ctx.textAlign = "left";
 
                 let text = "";
+                // Fix for undefined
                 if (step.type === 'calculate_diff') {
-                    // Subtraction: "dTop - dBottom = Diff"
-                    // step.diff is the result
-                    text = `= ${step.diff}`;
+                    const diffVal = step.diff !== undefined ? step.diff : "?";
+                    text = `= ${diffVal}`;
                 } else {
-                    text = `= ${step.sum}`;
+                    const sumVal = step.sum !== undefined ? step.sum : "?";
+                    text = `= ${sumVal}`;
                 }
 
-                ctx.fillStyle = config.colorHighlight;
+                ctx.fillStyle = highlightColor;
                 ctx.fillText(text, textX, textY);
 
-                // Draw Arrow
+                // Draw Arrow - Fixed logic
                 const textWidth = ctx.measureText(text).width;
-                const arrowStartX = textX + (textWidth * 0.7);
+                const arrowStartX = textX; // Start from start of text
                 const arrowStartY = textY + 10;
 
+                // Make arrow point to where the result WILL be written
                 const arrowEndX = colX;
-                const arrowEndY = config.startY + (config.lineHeight * 2) - 30;
+                const arrowEndY = config.startY + (config.lineHeight * 2) - 10;
 
                 this.drawCurvedArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY);
             }
@@ -270,73 +275,81 @@ export class Renderer {
             ctx.font = `bold ${config.fontSize}px ${config.fontFamily}`;
         }
 
-        // Handle "Write Result" appearing
+        // Handle "Write Result"
         if (step.type === 'write_result') {
-            const currentVal = step.value;
-            ctx.fillStyle = config.colorHighlight;
-            // Scale effect?
-            const scale = progress; // 0 to 1
-            ctx.save();
-            ctx.translate(getX(step.columnIndex), config.startY + (config.lineHeight * 2));
-            ctx.scale(scale, scale);
-            ctx.fillText(currentVal, 0, 0);
-            ctx.restore();
+            const currentVal = step.value !== undefined ? step.value : "?";
+            ctx.fillStyle = highlightColor;
+            this.drawPoppedText(currentVal, getX(step.columnIndex), config.startY + (config.lineHeight * 2), progress);
 
-            // Persist at end of animation
             if (progress === 1) {
                 this.persistentState.resultDigits[step.columnIndex] = currentVal;
             }
         }
 
         if (step.type === 'write_final_carry') {
-            ctx.fillStyle = config.colorHighlight;
-            ctx.fillText(step.value, getX(-1), config.startY + (config.lineHeight * 2));
-            if (progress === 1) this.persistentState.finalCarry = step.value;
+            const val = step.value !== undefined ? step.value : "?";
+            ctx.fillStyle = highlightColor;
+            ctx.fillText(val, getX(-1), config.startY + (config.lineHeight * 2));
+            if (progress === 1) this.persistentState.finalCarry = val;
         }
 
-        // Handle Carries (Moving)
+        // Handle Carries
         if (step.type === 'carry') {
-            // Animate from column i to i-1
             const startXPos = getX(step.fromColumn);
-            const startYPos = config.startY + (config.lineHeight * 2) - 20; // Near result
+            const startYPos = config.startY + (config.lineHeight * 2) - 20;
             const endXPos = getX(step.toColumn);
-            const endYPos = config.startY - 60; // Above top number
+            const endYPos = config.startY - 60;
 
-            // Parabolic arc?
             const currentX = startXPos + (endXPos - startXPos) * progress;
-            const currentY = startYPos + (endYPos - startYPos) * progress - (Math.sin(progress * Math.PI) * 100); // Arc up
+            const currentY = startYPos + (endYPos - startYPos) * progress - (Math.sin(progress * Math.PI) * 100);
 
-            ctx.fillStyle = config.colorHighlight;
+            ctx.fillStyle = highlightColor;
             ctx.font = `bold ${config.fontSize * 0.6}px ${config.fontFamily}`;
             ctx.fillText(step.value, currentX, currentY);
 
-            // Draw Arrow?
             if (progress < 1) {
                 this.drawArrow(startXPos, startYPos, currentX, currentY);
             }
         }
 
-        // Draw Old Carries (Static)
+        // Draw Old Carries
         Object.entries(this.persistentState.carries).forEach(([colIdx, val]) => {
             ctx.fillStyle = config.colorSecondary;
             ctx.font = `bold ${config.fontSize * 0.6}px ${config.fontFamily}`;
             ctx.fillText(val, getX(parseInt(colIdx)), config.startY - 60);
         });
 
-        // Persist carry at end
         if (step.type === 'carry' && progress === 1) {
             this.persistentState.carries[step.toColumn] = step.value;
         }
     }
 
-    drawCurvedArrow(x1, y1, x2, y2) {
-        // Curve outwards to the right
-        // If x1 is right of x2, we curve "out" (further right) then back left.
-        const dist = Math.abs(x1 - x2);
-        const cpX = Math.max(x1, x2) + (dist * 0.5) + 60;
-        const cpY = (y1 + y2) / 2;
+    drawPoppedText(text, x, y, progress, scaleFactor = 1.0) {
+        // Pop effect: starts large then settles? Or grows?
+        // Let's do a quick "pop" at the start of progress (sin wave)
+        // scale = 1 + sin(progress * pi) * 0.5
+        const p = Math.max(0, Math.min(progress, 1));
+        const pop = 1 + (Math.sin(p * Math.PI) * 0.5);
+        const scale = pop * scaleFactor;
 
+        this.ctx.save();
+        this.ctx.translate(x, y);
+        this.ctx.scale(scale, scale);
+        // Reset font size locally if needed but context scale handles it
+        this.ctx.fillText(text, 0, 0);
+        this.ctx.restore();
+    }
+
+    drawCurvedArrow(x1, y1, x2, y2) {
+        // Curve from Right to Left usually
         const ctx = this.ctx;
+        const dist = Math.abs(x1 - x2);
+
+        // Control point: "out" to the right and down? 
+        // We want to go from the side text (= result) back to the column bottom.
+        const cpX = (x1 + x2) / 2 + 50;
+        const cpY = (y1 + y2) / 2 + 50;
+
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.quadraticCurveTo(cpX, cpY, x2, y2);
@@ -345,6 +358,7 @@ export class Renderer {
         ctx.strokeStyle = this.config.colorHighlight;
         ctx.stroke();
 
+        // Arrowhead
         const angle = Math.atan2(y2 - cpY, x2 - cpX);
         const headlen = 20;
 

@@ -36,6 +36,7 @@ export class Recorder {
 
             this.mediaRecorder.onstop = () => {
                 const blob = new Blob(this.chunks, { type: "video/webm" });
+                console.log(`Created video blob size: ${blob.size}`);
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;

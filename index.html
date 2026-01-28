@@ -31,6 +31,7 @@
                     <button id="btn-animate" class="primary">Animate</button>
                     <button id="btn-export-video">Export Video (WebM)</button>
                     <button id="btn-export-png">Export PNGs (ZIP)</button>
+                    <button id="btn-add-latex">Add LaTeX</button>
                 </div>
             </div>
 
@@ -38,6 +39,19 @@
                 <canvas id="math-canvas" width="1920" height="1080"></canvas>
             </div>
         </main>
+
+        <!-- Latex Modal -->
+        <div id="latex-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close-btn">&times;</span>
+                <h2>LaTeX Output</h2>
+                <textarea id="latex-output" readonly></textarea>
+                <div class="modal-actions">
+                    <button id="btn-copy-latex" class="primary">Copy to Clipboard</button>
+                    <button id="btn-close-modal">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Application Modules -->

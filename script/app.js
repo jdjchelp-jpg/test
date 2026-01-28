@@ -2,6 +2,7 @@
 import { MathEngine } from './math-engine.js';
 import { Renderer } from './renderer.js';
 import { Recorder } from './recorder.js';
+import { LatexGenerator } from './latex-generator.js';
 
 class App {
     constructor() {
@@ -11,8 +12,11 @@ class App {
         this.renderer = new Renderer(this.canvas, this.ctx);
         this.mathEngine = new MathEngine();
         this.recorder = new Recorder(this.canvas);
+        this.latexGenerator = new LatexGenerator();
+        this.currentSteps = []; // Store current steps for LaTeX
 
         this.bindEvents();
+        this.setupAPI();
 
         // Initial render test
         this.renderer.clear();
@@ -23,6 +27,43 @@ class App {
         document.getElementById('btn-animate').addEventListener('click', () => this.startAnimation());
         document.getElementById('btn-export-video').addEventListener('click', () => this.exportVideo());
         document.getElementById('btn-export-png').addEventListener('click', () => this.exportPNG());
+
+        // LaTeX Buttons
+        document.getElementById('btn-add-latex').addEventListener('click', () => this.showLatex());
+        document.getElementById('btn-close-modal').addEventListener('click', () => this.hideLatex());
+        document.querySelector('.close-btn').addEventListener('click', () => this.hideLatex());
+        document.getElementById('btn-copy-latex').addEventListener('click', () => {
+            const el = document.getElementById('latex-output');
+            el.select();
+            document.execCommand('copy');
+            alert("Copied to clipboard!");
+        });
+
+        // Close modal on outside click
+        window.addEventListener('click', (e) => {
+            if (e.target == document.getElementById('latex-modal')) {
+                this.hideLatex();
+            }
+        });
+    }
+
+    setupAPI() {
+        window.app = this;
+        // Expose public API for LaTeX
+        window.app.getLatexAPI = () => {
+            if (!this.currentSteps || this.currentSteps.length === 0) {
+                // If nothing generated yet, try generating from current input
+                const input = document.getElementById('math-input').value;
+                const base = 10;
+                try {
+                    const steps = this.mathEngine.generateSteps(input, base);
+                    return this.latexGenerator.generate(steps, base);
+                } catch (e) {
+                    return "Error: " + e.message;
+                }
+            }
+            return this.latexGenerator.generate(this.currentSteps, 10);
+        };
     }
 
     async startAnimation() {
@@ -32,6 +73,7 @@ class App {
 
         try {
             const steps = this.mathEngine.generateSteps(input, base);
+            this.currentSteps = steps; // Store for LaTeX
             await this.renderer.playAnimation(steps);
         } catch (e) {
             console.error("Animation failed:", e);
@@ -49,9 +91,10 @@ class App {
         // Trigger animation
         try {
             const steps = this.mathEngine.generateSteps(input, base);
+            this.currentSteps = steps;
             this.renderer.playAnimation(steps).then(async () => {
                 // Wait a moment for final frames to flush to recorder
-                await new Promise(r => setTimeout(r, 1000));
+                await new Promise(r => setTimeout(r, 2500));
                 await this.recorder.stopVideoRecording();
                 this.setUIState('idle');
             });
@@ -70,6 +113,7 @@ class App {
 
         try {
             const steps = this.mathEngine.generateSteps(input, base);
+            this.currentSteps = steps;
             this.renderer.playAnimation(steps, async (step, index) => {
                 // Callback after each step
                 const name = `${step.type}_col${step.columnIndex}`;
@@ -84,6 +128,16 @@ class App {
         }
     }
 
+    showLatex() {
+        const latex = window.app.getLatexAPI();
+        document.getElementById('latex-output').value = latex;
+        document.getElementById('latex-modal').classList.remove('hidden');
+    }
+
+    hideLatex() {
+        document.getElementById('latex-modal').classList.add('hidden');
+    }
+
     setUIState(state) {
         const btns = document.querySelectorAll('button');
         btns.forEach(b => b.disabled = (state === 'recording'));
@@ -92,5 +146,5 @@ class App {
 
 // Initialize on load
 window.addEventListener('DOMContentLoaded', () => {
-    window.app = new App();
+    new App();
 });

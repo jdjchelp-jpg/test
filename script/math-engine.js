@@ -6,10 +6,10 @@ export class MathEngine {
     parseInput(expression) {
         // Remove spaces
         expression = expression.trim().replace(/\s+/g, '');
-        // Match "Number operator Number"
-        const match = expression.match(/^([0-9A-Za-z]+)([\+\-])([0-9A-Za-z]+)$/);
+        // Match "Number operator Number". Supports +, -, *, x, /
+        const match = expression.match(/^([0-9A-Za-z]+)([\+\-\*x\/])([0-9A-Za-z]+)$/);
         if (!match) {
-            throw new Error("Invalid format. Expected 'Num + Num' or 'Num - Num'");
+            throw new Error("Invalid format. Expected 'Num + Num', 'Num - Num', 'Num x Num', or 'Num / Num'");
         }
         return {
             op1: match[1],
@@ -23,56 +23,54 @@ export class MathEngine {
 
         if (operator === '+') {
             return this.generateAdditionSteps(op1, op2, base);
-        } else {
+        } else if (operator === '-') {
             return this.generateSubtractionSteps(op1, op2, base);
+        } else if (operator === '*' || operator === 'x') {
+            return this.generateMultiplicationSteps(op1, op2, base);
+        } else if (operator === '/') {
+            return this.generateDivisionSteps(op1, op2, base);
         }
     }
 
+    // ... (Addition and Subtraction methods remain largely the same, included below for completeness if needed, but I will just assume they exist or you can paste the whole file if preferred. 
+    // Wait, the tool instruction says "Replace the entire class content". I must provide the WHOLE content or careful chunks. 
+    // Since I'm adding significantly, I'll provide the whole methods for clarity, or reuse if I can.
+    // Let's reuse existing Add/Sub by reference if I can, but `replace_file_content` with chunks is risky for big logic.
+    // I will replace valid chunks. Let's do the Dispatch and Parser first, then add the new methods.)
+
     generateAdditionSteps(op1, op2, base) {
-        // Parse numbers based on base
+        // ... (Keep existing implementation logic)
+        // I will re-output the existing logic here for safety + new logic.
         const val1 = parseInt(op1, base);
         const val2 = parseInt(op2, base);
 
-        if (isNaN(val1) || isNaN(val2)) {
-            throw new Error(`Invalid numbers for base ${base}`);
-        }
+        if (isNaN(val1) || isNaN(val2)) throw new Error(`Invalid numbers for base ${base}`);
 
-        // Align numbers for column processing (pad with left spaces/zeros logically)
-        // We work with strings to preserve individual digits
         const len = Math.max(op1.length, op2.length);
         const str1 = op1.padStart(len, ' ');
         const str2 = op2.padStart(len, ' ');
 
         const steps = [];
         let carry = 0;
-        const resultDigits = []; // Storing result from right to left
+        const resultDigits = [];
 
-        // 1. Setup Step
         steps.push({
             type: 'setup',
-            operands: {
-                top: str1,
-                bottom: str2,
-                rawTop: op1,
-                rawBottom: op2
-            },
+            operands: { top: str1, bottom: str2, rawTop: op1, rawBottom: op2 },
             base: base,
             maxLength: len,
             operator: '+'
         });
 
-        // Loop columns from right to left
         for (let i = len - 1; i >= 0; i--) {
             const digit1Char = str1[i];
             const digit2Char = str2[i];
-
             const digit1Val = digit1Char === ' ' ? 0 : parseInt(digit1Char, base);
             const digit2Val = digit2Char === ' ' ? 0 : parseInt(digit2Char, base);
 
-            // 2. Highlight Column
             steps.push({
                 type: 'highlight',
-                columnIndex: i, // Index relative to the padded string
+                columnIndex: i,
                 digitTop: digit1Char,
                 digitBottom: digit2Char,
                 valTop: digit1Val,
@@ -84,18 +82,15 @@ export class MathEngine {
             const digitResult = sum % base;
             const newCarry = Math.floor(sum / base);
 
-            // 3. Show Calculation (Intermediate)
-            // e.g., "7 + 5 + 1 (carry) = 13"
             steps.push({
                 type: 'calculate',
                 columnIndex: i,
                 values: { dTop: digit1Val, dBottom: digit2Val, carry: carry },
                 sum: sum,
                 digitResult: digitResult.toString(base).toUpperCase(),
-                newCarry: newCarry // The carry to move
+                newCarry: newCarry
             });
 
-            // 4. Write Result Digit
             resultDigits.unshift(digitResult.toString(base).toUpperCase());
             steps.push({
                 type: 'write_result',
@@ -103,7 +98,6 @@ export class MathEngine {
                 value: digitResult.toString(base).toUpperCase()
             });
 
-            // 5. Animate Carry
             if (newCarry > 0) {
                 steps.push({
                     type: 'carry',
@@ -112,26 +106,19 @@ export class MathEngine {
                     value: newCarry
                 });
             }
-
             carry = newCarry;
         }
 
-        // If final carry remains
         if (carry > 0) {
             resultDigits.unshift(carry.toString(base).toUpperCase());
             steps.push({
                 type: 'write_final_carry',
-                columnIndex: -1, // Virtual column to the left
+                columnIndex: -1,
                 value: carry.toString(base).toUpperCase()
             });
         }
 
-        // 6. Finish
-        steps.push({
-            type: 'finish',
-            result: resultDigits.join('')
-        });
-
+        steps.push({ type: 'finish', result: resultDigits.join('') });
         return steps;
     }
 
@@ -141,99 +128,69 @@ export class MathEngine {
         if (val1 < val2) throw new Error("Negative results not supported visually yet.");
 
         const len = Math.max(op1.length, op2.length);
-        // Pad operands.
-        let str1 = op1.padStart(len, '0'); // Pad with 0s for easier logic? Or spaces? 
-        // Logic is easier with numbers array.
-        let digits1 = str1.split('').map(d => parseInt(d, base));
-        const str2 = op2.padStart(len, '0'); // Subtrahend
-        const digits2 = str2.split('').map(d => parseInt(d, base));
-
         const steps = [];
         const resultDigits = [];
 
-        // Track "current" value of digits1 as we borrow visually
-        // Detailed Visual State
+        let digits1 = op1.padStart(len, '0').split('').map(d => parseInt(d, base));
+        let digits2 = op2.padStart(len, '0').split('').map(d => parseInt(d, base));
         let visualDigitsTop = [...digits1];
 
         steps.push({
             type: 'setup',
-            operands: {
-                top: op1.padStart(len, ' '),
-                bottom: op2.padStart(len, ' '),
-            },
+            operands: { top: op1.padStart(len, ' '), bottom: op2.padStart(len, ' '), rawTop: op1, rawBottom: op2 },
             base: base,
             maxLength: len,
             operator: '-'
         });
 
         for (let i = len - 1; i >= 0; i--) {
-            // Need to borrow?
-            let d1 = visualDigitsTop[i]; // Current value (might have been borrowed from)
+            let d1 = visualDigitsTop[i];
             const d2 = digits2[i];
 
             steps.push({ type: 'highlight', columnIndex: i });
 
             if (d1 < d2) {
-                // BORROW SEQUENCE
-                // Find lender
                 let k = i - 1;
-                while (k >= 0 && visualDigitsTop[k] === 0) {
-                    k--;
-                }
-                if (k < 0) throw new Error("Should not happen if val1 >= val2");
+                while (k >= 0 && visualDigitsTop[k] === 0) k--;
 
-                // Borrow from k
-                // Visualize: Cross out k, write new val
+                // Borrow Action from K
                 const oldValK = visualDigitsTop[k];
                 visualDigitsTop[k] -= 1;
-                const newValK = visualDigitsTop[k];
-
                 steps.push({
                     type: 'borrow_action',
                     columnIndex: k,
                     oldValue: oldValK.toString(base).toUpperCase(),
-                    newValue: newValK.toString(base).toUpperCase(),
+                    newValue: visualDigitsTop[k].toString(base).toUpperCase(),
                     isSource: true
                 });
 
-                // Ripple zeros
+                // Ripple
                 for (let j = k + 1; j < i; j++) {
-                    // 0 becomes base-1
-                    const oldValJ = visualDigitsTop[j]; // 0
+                    const oldValJ = visualDigitsTop[j];
                     visualDigitsTop[j] = base - 1;
-                    const newValJ = visualDigitsTop[j];
-
                     steps.push({
                         type: 'borrow_action',
-                        columnIndex: j,
+                        columnIndex: j, // This is technically a "receive then give" but visually we just cross out?
+                        // For standard "cross out 0 make it 9", it acts like a borrow source for the next.
                         oldValue: oldValJ.toString(base).toUpperCase(),
-                        // In visual, if it was already modified, we cross out the modified?
-                        // Assuming standard ripple on 0s
-                        newValue: newValJ.toString(base).toUpperCase(),
+                        newValue: visualDigitsTop[j].toString(base).toUpperCase(),
                         isRipple: true
                     });
                 }
 
-                // Add base to current col
+                // Receive at I
                 const oldValI = visualDigitsTop[i];
                 visualDigitsTop[i] += base;
-                const newValI = visualDigitsTop[i]; // This might be "10" or "11" etc.
-                // We typically show the "1" superscript or the full value?
-                // LaTeX shows "10" for binary 2. 
-
                 steps.push({
                     type: 'borrow_receive',
                     columnIndex: i,
                     oldValue: oldValI.toString(base).toUpperCase(),
-                    newValue: base === 2 && newValI === 2 ? "10" : newValI.toString(base).toUpperCase(), // Special case for binary 10
+                    newValue: base === 2 && visualDigitsTop[i] === 2 ? "10" : visualDigitsTop[i].toString(base).toUpperCase(),
                     addedValue: base
                 });
-
-                // Update d1 for calculation
                 d1 = visualDigitsTop[i];
             }
 
-            // Calculate Difference
             const diff = d1 - d2;
             resultDigits.unshift(diff.toString(base).toUpperCase());
 
@@ -252,6 +209,154 @@ export class MathEngine {
         }
 
         steps.push({ type: 'finish', result: resultDigits.join('') });
+        return steps;
+    }
+
+    generateMultiplicationSteps(op1, op2, base) {
+        const val1 = parseInt(op1, base);
+        const val2 = parseInt(op2, base);
+        const result = (val1 * val2).toString(base).toUpperCase();
+
+        const steps = [];
+
+        // Setup
+        steps.push({
+            type: 'setup_multiplication',
+            operands: { top: op1, bottom: op2 },
+            operator: 'x',
+            base: base
+        });
+
+        // Loop through bottom digits (right to left)
+        const digits2 = op2.split('').reverse();
+        const topVal = parseInt(op1, base);
+
+        for (let i = 0; i < digits2.length; i++) {
+            const digit2 = parseInt(digits2[i], base);
+
+            // Highlight current multiplier digit
+            steps.push({
+                type: 'highlight_multiplier',
+                bottomIndex: op2.length - 1 - i,
+                value: digit2
+            });
+
+            // Calculate Partial Product
+            const partialProduct = topVal * digit2;
+            const partialStr = partialProduct.toString(base).toUpperCase();
+
+            steps.push({
+                type: 'calculate_partial',
+                term1: topVal,
+                term2: digit2,
+                result: partialStr,
+                shift: i // Shift amount (0 for units, 1 for tens...)
+            });
+
+            steps.push({
+                type: 'write_partial',
+                value: partialStr,
+                shift: i,
+                rowLine: i // Which line to write to
+            });
+        }
+
+        // Final Summation logic
+        // We can just show the final line if we don't want to animate the full addition of partials
+        // For simplicity in V1, let's just "Draw Line" and "Write Result"
+        steps.push({
+            type: 'draw_sum_line'
+        });
+
+        steps.push({
+            type: 'write_mult_result',
+            value: result
+        });
+
+        steps.push({ type: 'finish', result: result });
+        return steps;
+    }
+
+    generateDivisionSteps(op1, op2, base) {
+        // Op1 / Op2
+        const dividend = parseInt(op1, base);
+        const divisor = parseInt(op2, base);
+        if (divisor === 0) throw new Error("Division by zero");
+
+        const steps = [];
+
+        steps.push({
+            type: 'setup_division',
+            dividend: op1,
+            divisor: op2,
+            base: base
+        });
+
+        let currentDividendStr = "";
+        let currentDividendVal = 0;
+        let resultStr = "";
+
+        const dividendDigits = op1.split('');
+
+        for (let i = 0; i < dividendDigits.length; i++) {
+            // Bring down
+            const digit = dividendDigits[i];
+            currentDividendStr += digit;
+            currentDividendVal = parseInt(currentDividendStr, base);
+
+            steps.push({
+                type: 'div_bring_down',
+                digit: digit,
+                currentStr: currentDividendStr,
+                index: i // Position in dividend
+            });
+
+            // How many times does divisor fit?
+            const quotientDigit = Math.floor(currentDividendVal / divisor);
+            const product = quotientDigit * divisor;
+            const remainder = currentDividendVal - product;
+
+            // Step: Divide/Estimate
+            steps.push({
+                type: 'div_estimate',
+                currentVal: currentDividendVal,
+                divisor: divisor,
+                quotient: quotientDigit
+            });
+
+            // Write Quotient
+            resultStr += quotientDigit.toString(base).toUpperCase();
+            steps.push({
+                type: 'div_write_quotient',
+                digit: quotientDigit.toString(base).toUpperCase(),
+                index: i
+            });
+
+            // Multiply and write below
+            steps.push({
+                type: 'div_multiply',
+                digit: quotientDigit,
+                divisor: divisor,
+                product: product.toString(base).toUpperCase(),
+                rowIndex: i
+            });
+
+            // Subtract
+            steps.push({
+                type: 'div_subtract',
+                minuend: currentDividendVal,
+                subtrahend: product,
+                remainder: remainder.toString(base).toUpperCase(),
+                rowIndex: i
+            });
+
+            // Update for next loop
+            currentDividendStr = remainder.toString(base).toUpperCase();
+            // Careful with 0 handling
+            if (currentDividendStr === "0") currentDividendStr = "";
+        }
+
+        steps.push({ type: 'finish', result: resultStr });
         return steps;
     }
 }

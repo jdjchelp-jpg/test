@@ -27,7 +27,8 @@ class App {
 
     async startAnimation() {
         const input = document.getElementById('math-input').value;
-        const base = parseInt(document.getElementById('base-select').value);
+        const base = 10; // Default to 10, selector removed
+        console.log(`Starting animation for ${input} in base ${base}`);
 
         try {
             const steps = this.mathEngine.generateSteps(input, base);
@@ -43,7 +44,7 @@ class App {
         this.setUIState('recording');
 
         const input = document.getElementById('math-input').value;
-        const base = parseInt(document.getElementById('base-select').value);
+        const base = 10;
 
         // Trigger animation
         try {
@@ -63,12 +64,12 @@ class App {
         this.setUIState('recording');
 
         const input = document.getElementById('math-input').value;
-        const base = parseInt(document.getElementById('base-select').value);
+        const base = 10;
 
         try {
             const steps = this.mathEngine.generateSteps(input, base);
             this.renderer.playAnimation(steps, async (step, index) => {
-                // Callback after each step 
+                // Callback after each step
                 const name = `${step.type}_col${step.columnIndex}`;
                 await this.recorder.captureFrame(name);
             }).then(() => {

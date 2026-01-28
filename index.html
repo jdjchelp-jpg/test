@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,6 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -22,14 +24,8 @@
                     <label for="math-input">Calculation:</label>
                     <input type="text" id="math-input" placeholder="e.g. 777 + 111" value="777 + 111">
                 </div>
-                
-                <div class="input-group">
-                    <label for="base-select">Number System:</label>
-                    <select id="base-select">
-                        <option value="10">Decimal (Base 10)</option>
-                        <option value="2">Binary (Base 2)</option>
-                    </select>
-                </div>
+
+                <!-- Number System removed as requested -->
 
                 <div class="button-group">
                     <button id="btn-animate" class="primary">Animate</button>
@@ -47,4 +43,5 @@
     <!-- Application Modules -->
     <script type="module" src="script/app.js"></script>
 </body>
+
 </html>

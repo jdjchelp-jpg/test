@@ -20,7 +20,7 @@ export class Renderer {
             fontFamily: "Courier New, monospace", // Monospace helps alignment
             colorNormal: "#000000",
             colorHighlight: "#ff3b30", // Red for active
-            colorSecondary: "#8e8e93", // Grey for inactive carries
+            colorSecondary: "#777777ff", // Grey for inactive carries
             digitSpacing: 100,
             lineHeight: 160,
             startX: 960, // Center X
@@ -111,7 +111,9 @@ export class Renderer {
         }
 
         // Draw Operator
-        ctx.fillStyle = config.colorNormal;
+        // Highlight operator if any calculation is happening
+        const isOperatorHighlight = (step.type === 'highlight' || step.type === 'calculate' || step.type === 'write_result');
+        ctx.fillStyle = isOperatorHighlight ? config.colorHighlight : config.colorNormal;
         ctx.fillText(setupStep.operator, startX - config.digitSpacing, config.startY + config.lineHeight);
 
         // Draw Bottom Number
@@ -132,24 +134,76 @@ export class Renderer {
 
         // Draw Results (Persistent)
         Object.entries(this.persistentState.resultDigits).forEach(([colIdx, val]) => {
-            ctx.fillStyle = config.colorNormal;
+            ctx.fillStyle = config.colorHighlight; // Results are always red/highlighted in the example? Or black once done? Image shows red result 8. 
+            // Let's keep them highlighted as they are "new"
             ctx.fillText(val, getX(parseInt(colIdx)), config.startY + (config.lineHeight * 2));
         });
 
         if (this.persistentState.finalCarry) {
-            ctx.fillStyle = config.colorNormal;
+            ctx.fillStyle = config.colorHighlight;
             ctx.fillText(this.persistentState.finalCarry, getX(-1), config.startY + (config.lineHeight * 2));
         }
 
-        // Draw Intermediate Calculation (Fade In/Out)
-        if (step.type === 'calculate') {
-            ctx.globalAlpha = progress; // Fade in
-            ctx.fillStyle = config.colorSecondary;
-            // Draw math text 
-            const mathText = `${step.values.dTop} + ${step.values.dBottom} + ${step.values.carry} = ${step.sum}`;
-            ctx.font = "40px Arial";
-            ctx.fillText(mathText, config.startX, config.startY + 400); // Bottom info
+        // Draw Intermediate Calculation (Side Style)
+        if (step.type === 'calculate' || (step.type === 'write_result' && progress < 1)) {
+            if (step.type === 'calculate') {
+                ctx.globalAlpha = Math.min(progress * 2, 1); // Fade in faster
+            } else {
+                ctx.globalAlpha = Math.max(0, 1 - progress);
+            }
+
+            if (ctx.globalAlpha > 0.01) {
+                const stepVal = step.values;
+
+                // Position: To the right of the active column.
+                // shift further right to avoid overlap
+                const colX = getX(step.columnIndex);
+                const textX = colX + (config.digitSpacing * 2.5);
+                const textY = config.startY + (config.lineHeight * 0.5) + 20;
+
+                ctx.font = `bold 50px Arial`; // Cleaner sans-serif
+                ctx.textAlign = "left";
+
+                // Draw manual parts for color control "7 + 1 = 8"
+                let currentX = textX;
+
+                // Helper to draw text and advance X
+                const drawPart = (str, color) => {
+                    ctx.fillStyle = color;
+                    ctx.fillText(str, currentX, textY);
+                    currentX += ctx.measureText(str).width;
+                };
+
+                if (stepVal.carry > 0) {
+                    drawPart(stepVal.carry, config.colorSecondary); // Carry is secondary
+                    drawPart(" + ", config.colorHighlight);
+                }
+
+                drawPart(stepVal.dTop, config.colorNormal);
+                drawPart(" + ", config.colorHighlight);
+                drawPart(stepVal.dBottom, config.colorNormal);
+                drawPart(" = ", config.colorNormal);
+
+                // Result part
+                const resultWidth = ctx.measureText(step.sum).width;
+                const resultCenterX = currentX + (resultWidth / 2);
+                drawPart(step.sum, config.colorHighlight);
+
+                // Draw Arrow from the result number to the answer slot
+                // We want to force alpha 1 for the arrow? Or fade it too? Fade is nice.
+
+                const arrowStartX = resultCenterX;
+                const arrowStartY = textY + 20;
+
+                const arrowEndX = colX;
+                const arrowEndY = config.startY + (config.lineHeight * 2) - 50;
+
+                // Curved Arrow
+                this.drawCurvedArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY);
+            }
+
             ctx.globalAlpha = 1.0;
+            ctx.textAlign = "center"; // Reset
             ctx.font = `bold ${config.fontSize}px ${config.fontFamily}`; // Reset font
         }
 

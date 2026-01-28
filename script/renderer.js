@@ -147,64 +147,45 @@ export class Renderer {
         // Draw Intermediate Calculation (Side Style)
         if (step.type === 'calculate' || (step.type === 'write_result' && progress < 1)) {
             if (step.type === 'calculate') {
-                ctx.globalAlpha = Math.min(progress * 2, 1); // Fade in faster
+                ctx.globalAlpha = Math.min(progress * 2, 1);
             } else {
                 ctx.globalAlpha = Math.max(0, 1 - progress);
             }
 
             if (ctx.globalAlpha > 0.01) {
                 const stepVal = step.values;
+                const colX = getX(step.columnIndex);
 
                 // Position: To the right of the active column.
-                // shift further right to avoid overlap
-                const colX = getX(step.columnIndex);
-                const textX = colX + (config.digitSpacing * 2.5);
-                const textY = config.startY + (config.lineHeight * 0.5) + 20;
+                // Move it closer if we aren't writing the full equation
+                const textX = colX + (config.digitSpacing * 1.8);
+                const textY = config.startY + (config.lineHeight * 1.0); // Align with bottom number/operator roughly
 
-                ctx.font = `bold 50px Arial`; // Cleaner sans-serif
+                ctx.font = `bold 60px Arial`;
                 ctx.textAlign = "left";
 
-                // Draw manual parts for color control "7 + 1 = 8"
-                let currentX = textX;
-
-                // Helper to draw text and advance X
-                const drawPart = (str, color) => {
-                    ctx.fillStyle = color;
-                    ctx.fillText(str, currentX, textY);
-                    currentX += ctx.measureText(str).width;
-                };
-
-                if (stepVal.carry > 0) {
-                    drawPart(stepVal.carry, config.colorSecondary); // Carry is secondary
-                    drawPart(" + ", config.colorHighlight);
-                }
-
-                drawPart(stepVal.dTop, config.colorNormal);
-                drawPart(" + ", config.colorHighlight);
-                drawPart(stepVal.dBottom, config.colorNormal);
-                drawPart(" = ", config.colorNormal);
-
-                // Result part
-                const resultWidth = ctx.measureText(step.sum).width;
-                const resultCenterX = currentX + (resultWidth / 2);
-                drawPart(step.sum, config.colorHighlight);
+                // Draw just "= SUM"
+                // e.g. "= 8" or "= 18"
+                const text = `= ${step.sum}`;
+                ctx.fillStyle = config.colorHighlight; // RED
+                ctx.fillText(text, textX, textY);
 
                 // Draw Arrow from the result number to the answer slot
-                // We want to force alpha 1 for the arrow? Or fade it too? Fade is nice.
-
-                const arrowStartX = resultCenterX;
-                const arrowStartY = textY + 20;
+                // Start: Bottom-Center of the RESULT number in the side text
+                const textWidth = ctx.measureText(text).width;
+                const arrowStartX = textX + (textWidth * 0.7); // Roughly under the number part
+                const arrowStartY = textY + 10;
 
                 const arrowEndX = colX;
-                const arrowEndY = config.startY + (config.lineHeight * 2) - 50;
+                const arrowEndY = config.startY + (config.lineHeight * 2) - 30; // Top of the answer digit position
 
                 // Curved Arrow
                 this.drawCurvedArrow(arrowStartX, arrowStartY, arrowEndX, arrowEndY);
             }
 
             ctx.globalAlpha = 1.0;
-            ctx.textAlign = "center"; // Reset
-            ctx.font = `bold ${config.fontSize}px ${config.fontFamily}`; // Reset font
+            ctx.textAlign = "center";
+            ctx.font = `bold ${config.fontSize}px ${config.fontFamily}`;
         }
 
         // Handle "Write Result" appearing
@@ -264,6 +245,33 @@ export class Renderer {
         if (step.type === 'carry' && progress === 1) {
             this.persistentState.carries[step.toColumn] = step.value;
         }
+    }
+
+    drawCurvedArrow(x1, y1, x2, y2) {
+        // Curve outwards to the right
+        // If x1 is right of x2, we curve "out" (further right) then back left.
+        const dist = Math.abs(x1 - x2);
+        const cpX = Math.max(x1, x2) + (dist * 0.5) + 60;
+        const cpY = (y1 + y2) / 2;
+
+        const ctx = this.ctx;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.quadraticCurveTo(cpX, cpY, x2, y2);
+
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = this.config.colorHighlight;
+        ctx.stroke();
+
+        const angle = Math.atan2(y2 - cpY, x2 - cpX);
+        const headlen = 20;
+
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
     }
 
     drawArrow(x1, y1, x2, y2) {

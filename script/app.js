@@ -49,8 +49,10 @@ class App {
         // Trigger animation
         try {
             const steps = this.mathEngine.generateSteps(input, base);
-            this.renderer.playAnimation(steps).then(() => {
-                this.recorder.stopVideoRecording();
+            this.renderer.playAnimation(steps).then(async () => {
+                // Wait a moment for final frames to flush to recorder
+                await new Promise(r => setTimeout(r, 1000));
+                await this.recorder.stopVideoRecording();
                 this.setUIState('idle');
             });
         } catch (e) {
